@@ -1,4 +1,4 @@
-#!/usr/bin/python3.9
+#!/usr/bin/env python3
 
 import subprocess
 import time
@@ -6,6 +6,12 @@ import sys
 import os
 from shlex import quote 
 import eyed3
+
+import google_auth_oauthlib.flow
+import googleapiclient.discovery
+import googleapiclient.errors
+
+from config import *#apiKey, oauthClientPath
 
 def readPlaylist(filename):
     songList = []
@@ -65,14 +71,52 @@ def parseV2(path):
         "album": song.tag.album
     }
 
+def youtubeLogin(secretsPath):
+    scopes = ["https://www.googleapis.com/auth/youtube"]
+    api_service_name = "youtube"
+    api_version = "v3"
 
-filename = 'playlist.m3u8'
-badPaths = []
+    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+        oauthClientPath, scopes)
+    credentials = flow.run_console()
+    youtube = googleapiclient.discovery.build(
+            api_service_name, api_version, credentials=credentials)
 
-paths = readPlaylist(filename)
-songs = getMetadataFromDevice(paths)
-print(songs)
-youtubeLogin(
-createPlaylist(name)
-videos = searchForVideos(songs)
-addVideos(videos,name)
+    return youtube
+
+    # request = youtube.playlists().list(
+        # part="contentDetails",
+        # mine=True
+    # )
+    # response = request.execute()
+    # print(response)
+
+def createPlaylist(youtube, name):
+    request = youtube.playlists().insert(
+       part="snippet,status",
+       body={
+           "snippet": {
+               "title": name,
+               "description": "Playlist translated from M3U by Ella"
+           },
+           "status": {
+               "privacyStatus": "private"
+           }
+       }
+    )
+
+    response = request.execute()
+    return response.get("id")
+
+if __name__ == '__main__':
+    filename = 'playlist.m3u8'
+    badPaths = []
+    name = "Test playlist"
+
+    # paths = readPlaylist(filename)
+    # songs = getMetadataFromDevice(paths)
+    youtube = youtubeLogin(oauthClientPath)
+    playlistId = createPlaylist(youtube,name)
+    print(playlistId)
+    videos = searchForVideos(songs)
+    addVideos(videos,name)

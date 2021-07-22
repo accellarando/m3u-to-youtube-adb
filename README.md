@@ -9,8 +9,8 @@ This makes sharing playlists kinda hard. So this is my stab at translating these
 Refer to [this reference](https://developers.google.com/youtube/v3/quickstart/python) from Google.
 1. Create a project in the [API console](https://console.cloud.google.com/projectselector2/apis/dashboard).
 	- Agree to the ToS and click "Create Project." Give it a name.
-2. From Library, enable the YouTube Data API v3.A
-3. Create your credentials. Navigate to Credentials, and create an API key and OAuth client ID.
+2. From Library, enable the YouTube Data API v3.
+3. Create your credentials. If you're prompted to create them, do so; otherwise, navigate to Credentials. Create an API key and OAuth client ID.
 	- For the OAuth key, set the application type to "Other".
 4. Copy your credentials into config.py.
 
