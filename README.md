@@ -4,15 +4,11 @@ My music library is just on my phone, I make playlists there, I store songs ther
 
 This makes sharing playlists kinda hard. So this is my stab at translating these m3u playlists into a YouTube playlist.
 
-## Setting up your YouTube API credentials.
-
-Refer to [this reference](https://developers.google.com/youtube/v3/quickstart/python) from Google.
-1. Create a project in the [API console](https://console.cloud.google.com/projectselector2/apis/dashboard).
-	- Agree to the ToS and click "Create Project." Give it a name.
-2. From Library, enable the YouTube Data API v3.
-3. Create your credentials. If you're prompted to create them, do so; otherwise, navigate to Credentials. Create an API key and OAuth client ID.
-	- For the OAuth key, set the application type to "Other".
-4. Copy your credentials into config.py.
+## Getting your YouTube API credentials.
+I'm using the unofficial ytmusicapi module.
+Per [their documentation](https://ytmusicapi.readthedocs.io/en/latest/setup.html), it's easiest to just grab the authenticated POST request from your browser.
+So, open the developer tools network tab, log in to YouTube Music, and look for a POST 200 response in json.
+Copy and paste the response into "auth.json" in the root directory.
 
 ## Dependencies
 - Android Debug Bridge

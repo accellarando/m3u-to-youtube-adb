@@ -5,13 +5,11 @@ import time
 import sys
 import os
 from shlex import quote 
-import eyed3
+from pathlib import Path
 
-import google_auth_oauthlib.flow
-import googleapiclient.discovery
-import googleapiclient.errors
-
-from config import *#apiKey, oauthClientPath
+import eyed3 #install with pip, for ID3v2 music tag parsing
+from ytmusicapi import YTMusic
+from difflib import SequenceMatcher as fuzzy
 
 def readPlaylist(filename):
     songList = []
@@ -22,7 +20,7 @@ def readPlaylist(filename):
     return songList
 
 def getMetadataFromDevice(paths):
-    global badPaths
+    global failures
     metadata = []
     for path in paths:
         tags = {}
@@ -44,10 +42,10 @@ def getMetadataFromDevice(paths):
                 tags = parseV2('tmp.mp3')
                 subprocess.run(['rm','tmp.mp3'])
             else:
-                badPaths.append(path)
+                failures.append(path)
         if len(tags) > 0:
             metadata.append(tags)
-    return badPaths,metadata
+    return metadata
 
 def parseV1(adbOutput):
     '''Parses info from a ID3v1 tag.'''
@@ -62,7 +60,6 @@ def parseV1(adbOutput):
         "album": album.strip()
     }
 
-
 def parseV2(path):
     song = eyed3.load(path)
     return {
@@ -71,52 +68,117 @@ def parseV2(path):
         "album": song.tag.album
     }
 
-def youtubeLogin(secretsPath):
-    scopes = ["https://www.googleapis.com/auth/youtube"]
-    api_service_name = "youtube"
-    api_version = "v3"
+def searchForSongs(yt,songs):
+    global searchResults
+    global failures
 
-    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-        oauthClientPath, scopes)
-    credentials = flow.run_console()
-    youtube = googleapiclient.discovery.build(
-            api_service_name, api_version, credentials=credentials)
+    ids = []
+    for song in songs:
+        found = False
+        results = yt.search((song['title']+" by "+song['artist']), "songs",searchResults)
+        if len(results) == 0:
+            results = yt.search((song['title']+" by "+song['artist']), "videos",searchResults)
+            if len(results) == 0:
+                failures.append(song)
+                continue
+        for result in results:
+         #    try:
+                # doesntmatch(result,song)
+            # except:
+                # print(fuzzy(None, result['title'], song['title']).ratio())
+                # print(result)
+                # # print(fuzzy(None, result['artists'][0]['name'], song['artist']).ratio())
+                # print(fuzzy(None, result['album']['name'], song['album']).ratio())
+                # exit("fuck")
+            if doesntmatch(result,song):
+                continue
+            else:
+                ids.append(result['videoId'])
+                found = True
+                break
+        if not found:
+            choice = getInput(song,results)
+            if choice == "v":
+                theChosenOne = searchForVideos(yt,song)
+                if theChosenOne != 0:
+                    ids.append(theChosenOne)
+            elif choice == "s":
+                failures.append(song)
+            else:
+                ids.append(results[int(choice)]['videoId'])
+    return ids
 
-    return youtube
+def searchForVideos(yt,song):
+    global searchResults
+    results = yt.search((song['title']+" by "+song['artist']), "videos",searchResults)
+    choice = getInput(song, results)
+    if choice == "s":
+        return 0
+    return results[int(choice)]['videoId']
 
-    # request = youtube.playlists().list(
-        # part="contentDetails",
-        # mine=True
-    # )
-    # response = request.execute()
-    # print(response)
+def getInput(song,results):
+    print("\n\nImperfect match found.\n")
+    print("Search terms: "+str(song)+"\n")
+    print("Results:")
 
-def createPlaylist(youtube, name):
-    request = youtube.playlists().insert(
-       part="snippet,status",
-       body={
-           "snippet": {
-               "title": name,
-               "description": "Playlist translated from M3U by Ella"
-           },
-           "status": {
-               "privacyStatus": "private"
-           }
-       }
-    )
+    if results[0]['resultType'] == 'video':
+        for i in range(0,len(results)):
+            print(str(i)+": "+results[i]['title']+" - "
+                +(results[i]['artists'][0]['name'] 
+                    if len(results[i]['artists'])>0 else "Unknown"))
+    else:
+        for i in range(0,len(results)):
+            print(str(i)+": "+results[i]['title']+" - "
+                +(results[i]['artists'][0]['name'] 
+                    if len(results[i]['artists'])>0 else "Unknown")+" - "
+                +results[i]["album"]['name'])
+        print("\n Or type 'v' to search by videos, s to skip.")
+    return input("Pick a result by index: ") #todo: validation here maybe
 
-    response = request.execute()
-    return response.get("id")
+def doesntmatch(result,song):
+    global matchThreshold
+    resultTitle = result['title'][0:28].lower()
+    songTitle = song['title'][0:28].lower()
+    resultAlbum = result['album']['name'][0:28].lower()
+    songAlbum = song['album'][0:28].lower()
+    resultArtist = (result['artists'][0]['name'][0:28].lower() 
+            if len(result['artists']) > 0 else 1
+    songArtist = song['artist'][0:28].lower()
+
+    titleRatio = fuzzy(None, resultTitle, songTitle).ratio()
+    albumRatio = fuzzy(None, resultAlbum, songAlbum).ratio()
+    artistRatio = fuzzy(None, resultArtist, songArtist).ratio()
+
+    meanRatio = (titleRatio + albumRatio + artistRatio) / 3
+    return meanRatio < matchThreshold
+
+    return ((fuzzy(None, result['title'][0:28], song['title'][0:28]).ratio()) < matchThreshold
+        or ((fuzzy(None, result['artists'][0]['name'][0:28], 
+            song['artist'][0:28]).ratio() < matchThreshold) 
+            if len(result['artists'])>0 else False)
+        or (fuzzy(None, result['album']['name'][0:28], song['album'][0:28]).ratio() < matchThreshold))
 
 if __name__ == '__main__':
-    filename = 'playlist.m3u8'
-    badPaths = []
-    name = "Test playlist"
+    failures=[]
+    filename = input('Type in the playlist path: ')
+    name = Path(filename).stem
 
-    # paths = readPlaylist(filename)
-    # songs = getMetadataFromDevice(paths)
-    youtube = youtubeLogin(oauthClientPath)
-    playlistId = createPlaylist(youtube,name)
+    description = "Playlist generated from M3U by Ella."
+    matchThreshold = .7 #1 means perfect match
+    searchResults = 28
+
+    paths = readPlaylist(filename)
+    songs = getMetadataFromDevice(paths)
+    if not os.path.isfile("auth.json"):
+        YTMusic.setup("auth.json")
+    youtube = YTMusic("auth.json")
+    videos = searchForSongs(youtube,songs)
+    playlistId = youtube.create_playlist(name,description)
     print(playlistId)
-    videos = searchForVideos(songs)
-    addVideos(videos,name)
+    print(videos)
+    with open("videoIds","a") as f:
+        f.write(str(videos))
+    youtube.add_playlist_items(playlistId,videos)
+
+    print("All done! These are the ones that failed: \n")
+    print(failures)
