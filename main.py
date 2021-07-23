@@ -30,7 +30,11 @@ def getMetadataFromDevice(paths):
 
         footerCommand = "adb shell 'tail -c 128 "+escapedPath+" |cat -v'"
         footer = subprocess.check_output(footerCommand,shell=True)
-        if footer.decode()[0:3] == "TAG":
+        try:
+            decoded = footer.decode('utf-8')
+        except:
+            decoded = footer.decode('utf-16')
+        if decoded[0:3] == "TAG":
             #This should be faster, try this first
             tags = parseV1(footer)
         else:
@@ -38,7 +42,11 @@ def getMetadataFromDevice(paths):
             # path = path.replace("'\"'\"'","\\'")
             headerCommand = "adb pull \""+path+"\" tmp.mp3; head -c 3 tmp.mp3"
             headerTag = subprocess.check_output(headerCommand,shell=True)
-            if(headerTag.decode()[-3:] == "ID3"):
+            try:
+                decoded = headerTag.decode('utf-8')
+            except:
+                decoded = headerTag.decode('utf-16')
+            if decoded[-3:] == "ID3":
                 tags = parseV2('tmp.mp3')
                 subprocess.run(['rm','tmp.mp3'])
             else:
@@ -114,6 +122,7 @@ def searchForVideos(yt,song):
     choice = getInput(song, results)
     if choice == "s":
         return 0
+    print( int(choice))
     return results[int(choice)]['videoId']
 
 def getInput(song,results):
@@ -132,31 +141,33 @@ def getInput(song,results):
                 +(results[i]['artists'][0]['name'] 
                     if len(results[i]['artists'])>0 else "Unknown")+" - "
                 +results[i]["album"]['name'])
-        print("\n Or type 'v' to search by videos, s to skip.")
-    return input("Pick a result by index: ") #todo: validation here maybe
+    print("\n Or type 'v' to search by videos, s to skip.")
+    choice = input("Pick a result by index: ") 
+    while choice != 'v' and choice != 's' and not choice.isnumeric():
+        choice = input("Pick a result by index: ") 
+    return choice
 
 def doesntmatch(result,song):
     global matchThreshold
     resultTitle = result['title'][0:28].lower()
     songTitle = song['title'][0:28].lower()
-    resultAlbum = result['album']['name'][0:28].lower()
-    songAlbum = song['album'][0:28].lower()
     resultArtist = (result['artists'][0]['name'][0:28].lower() 
-            if len(result['artists']) > 0 else 1
+            if len(result['artists']) > 0 else 1)
     songArtist = song['artist'][0:28].lower()
 
     titleRatio = fuzzy(None, resultTitle, songTitle).ratio()
-    albumRatio = fuzzy(None, resultAlbum, songAlbum).ratio()
     artistRatio = fuzzy(None, resultArtist, songArtist).ratio()
 
-    meanRatio = (titleRatio + albumRatio + artistRatio) / 3
-    return meanRatio < matchThreshold
+    if result['resultType'] != 'video':
+        resultAlbum = result['album']['name'][0:28].lower()
+        songAlbum = song['album'][0:28].lower()
+        albumRatio = fuzzy(None, resultAlbum, songAlbum).ratio()
+        meanRatio = (titleRatio + albumRatio + artistRatio) / 3
 
-    return ((fuzzy(None, result['title'][0:28], song['title'][0:28]).ratio()) < matchThreshold
-        or ((fuzzy(None, result['artists'][0]['name'][0:28], 
-            song['artist'][0:28]).ratio() < matchThreshold) 
-            if len(result['artists'])>0 else False)
-        or (fuzzy(None, result['album']['name'][0:28], song['album'][0:28]).ratio() < matchThreshold))
+    else:
+        meanRatio = (titleRatio + artistRatio) / 2
+
+    return meanRatio < matchThreshold
 
 if __name__ == '__main__':
     failures=[]
@@ -178,7 +189,10 @@ if __name__ == '__main__':
     print(videos)
     with open("videoIds","a") as f:
         f.write(str(videos))
-    youtube.add_playlist_items(playlistId,videos)
+    if (youtube.add_playlist_items(playlistId,videos,None,True)['status']
+        == 'STATUS_SUCCEEDED'):
+        print("Songs added to playlist! Playlist may have duplicates.")
 
-    print("All done! These are the ones that failed: \n")
-    print(failures)
+    if len(failures) > 0:
+        print("Failed to add these songs: \n")
+        print(failures)
