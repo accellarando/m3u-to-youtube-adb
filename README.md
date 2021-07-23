@@ -18,3 +18,9 @@ If you don't do that, the program should prompt you on first run. It will also j
 - Python modules (install with Pip):
 	- eyeD3
 	- ytmusicapi
+
+## Todo
+- Auto mode (no selecting from similar search results)
+- Batch playlist upload
+- Take arguments from the shell
+- Further testing and debugging
